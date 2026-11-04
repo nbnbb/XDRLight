@@ -1,0 +1,15 @@
+.DS_Store
+.AppleDouble/
+__MACOSX/
+XDRLight.app/
+dist/
+*.log
+*backup*
+*.dmg
+*.dSYM/
+.env
+.env.*
+*.pem
+*.p12
+*.p8
+*.key
