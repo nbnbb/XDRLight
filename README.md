@@ -1,6 +1,8 @@
 # XDRLight
 
-macOS 菜单栏亮度工具：调节系统背光，并在系统允许时利用内置 XDR 屏幕的 HDR 余量增强桌面。
+**释放 Mac XDR 屏幕的高亮潜力。**
+
+利用系统允许的 HDR 余量增强普通桌面显示，在菜单栏调节屏幕亮度与增强强度，支持持续保持和退出恢复。适用于受支持的内置 XDR 屏幕机型。
 
 ## 下载
 
@@ -54,3 +56,7 @@ open XDRLight.app
 ## 开源许可
 
 GPL-3.0，见 [LICENSE](LICENSE)。技术来源与第三方许可见 [THIRD_PARTY.md](THIRD_PARTY.md)。当前版本保留 GPL 及技术来源标注。
+
+## 代码来源
+
+本项目不是全部独立原创：亮度核心参考 BrightIntosh，温度读取参考 Stats，更新使用 Sparkle。产品界面、保持与保护逻辑、测试及发布流程由本项目实现和整合。[查看逐项来源与对照证据](CODE_PROVENANCE.md)。
