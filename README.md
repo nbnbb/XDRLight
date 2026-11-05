@@ -4,7 +4,7 @@ macOS 菜单栏亮度工具：调节系统背光，并在系统允许时利用�
 
 ## 下载
 
-[下载 1.5.2 测试版（macOS arm64 DMG）](https://github.com/chenshuaining-cpu/XDRLight/releases/download/v1.5.2/XDRLight-1.5.2.dmg) · [发布页与源码包](https://github.com/chenshuaining-cpu/XDRLight/releases/tag/v1.5.2) · [测试记录](VALIDATION.md)
+[下载 1.5.3 测试版（macOS arm64 DMG）](https://github.com/nbnbb/XDRLight/releases/download/v1.5.3/XDRLight-1.5.3.dmg) · [发布页与源码包](https://github.com/nbnbb/XDRLight/releases/tag/v1.5.3) · [测试记录](VALIDATION.md)
 
 ## 支持范围
 
@@ -19,12 +19,11 @@ macOS 菜单栏亮度工具：调节系统背光，并在系统允许时利用�
 
 整机热状态达到较高或严重时暂停；睡眠唤醒与降温后尝试恢复。电池温度不是屏幕温度。不要同时运行其他色彩或亮度增强工具。
 
-## 首次打开提示"无法验证开发者"怎么办
+## 与其他软件同时使用
 
-XDRLight 目前没有使用 Apple 开发者证书签名和公证，所以第一次打开时 macOS 会拦截。这是正常现象，按下面任一方式放行即可（只需操作一次）：
+开启前请退出 Vivid、BrightIntosh、Lunar、f.lux、BetterDisplay 等亮度或色彩工具。XDRLight 会保守拒绝已识别的同类程序及已有增强的色彩曲线；运行中检测到新的外部色彩曲线会暂停，并保留该外部调整。无法保证识别所有工具或运行模式。
 
-1. 在「应用程序」文件夹里**右键**（或按住 Control 点按）XDRLight，选择「打开」，在弹窗里再点「打开」。
-2. 或者先双击打开一次，被拦截后前往「系统设置 → 隐私与安全性」，在页面下方找到 XDRLight 的提示，点「仍要打开」。
+保持模式会持续恢复面板目标背光；请使用 App 内滑块调节，或先关闭保持再用系统亮度键/自动亮度。HDR 视频可能截断高光，修图和校色时请关闭增强。
 
 ## 从源码构建
 
@@ -35,7 +34,9 @@ XDRLight 目前没有使用 Apple 开发者证书签名和公证，所以第一�
 open XDRLight.app
 ```
 
-仓库包含构建必需的 Sparkle 2.10.0 framework，保留其符号链接。部分 ZIP 解压工具会把框架符号链接变为普通文件；推荐 `git clone` 或 Release 提供的 source.tar.gz（用 `tar -xzf` 解压）。source.zip 已使用 macOS `unzip` 解压并构建验证。App 使用本地 ad hoc 签名，未完成 Apple Developer ID 签名和公证。
+使用下载页中的 DMG 无需安装 Xcode 或编译。
+
+仓库包含构建必需的 Sparkle 2.10.0 framework，保留其符号链接。部分 ZIP 解压工具会把框架符号链接变为普通文件；推荐 `git clone` 或 Release 提供的 source.tar.gz（用 `tar -xzf` 解压）。source.zip 已使用 macOS `unzip` 解压并构建验证。App 使用本地 ad hoc 签名，未完成 Apple Developer ID 签名和公证；首次打开可能需要在系统设置 → 隐私与安全性中允许。无需关闭 SIP 或全局安全保护。
 
 ```sh
 ./tests/run-integration.sh       # 会短暂改变本机亮度；测试后恢复
@@ -46,7 +47,7 @@ open XDRLight.app
 
 ## 更新与隐私
 
-当前未配置在线更新地址，不自动联网检查。后续配置 HTTPS feed 后由 Sparkle 验证 Ed25519 更新签名。仓库中的公钥可公开；发布私钥由发布者自行保管，不包含在仓库中。当前未完成真实线上跨版本升级验收。
+当前未配置在线更新地址，不自动联网检查。后续配置 HTTPS feed 后由 Sparkle 验证 Ed25519 更新签名，并按配置每天自动检查。仓库中的公钥可公开；发布私钥由发布者自行保管，不包含在仓库中。当前未完成真实线上跨版本升级验收。
 
 程序使用 DisplayServices 私有接口和只读 SMC 温度接口，可能随 macOS 更新失效。强制结束、系统崩溃时不保证清理成功；可运行恢复色彩.command 重置 ColorSync，背光用系统亮度键调整。
 

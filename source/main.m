@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 nbnbb. Third-party notices: THIRD_PARTY.md.
 #import <Cocoa/Cocoa.h>
 #import <MetalKit/MetalKit.h>
 #import <CoreGraphics/CoreGraphics.h>
@@ -13,7 +15,7 @@
 #import <ServiceManagement/ServiceManagement.h>
 
 // HDR trigger + gamma technique informed by BrightIntosh (GPL-3.0).
-// This implementation targets the built-in 500-nit SDR XDR panel on Mac14,5.
+// Calibration distinguishes 500-nit and 600-nit SDR XDR panel generations.
 typedef int (*BrightnessGet)(CGDirectDisplayID, float *);
 typedef int (*BrightnessSet)(CGDirectDisplayID, float);
 static int exitStatus = 0;
@@ -138,6 +140,7 @@ static NSImage *PrismMenuIcon(BOOL active) {
 @property NSTextField *strengthMenuValue;
 @property BOOL wantsBoost;
 @property BOOL sleeping;
+@property NSDate *sleepObservedAt;
 @property BOOL sessionInactive;
 @property BOOL recoveryBlocked;
 @property BOOL diagnostic;
@@ -178,7 +181,8 @@ static NSImage *PrismMenuIcon(BOOL active) {
     self.temperatureReader = [TemperatureReader new];
     self.screenTemperature = NAN; self.batteryTemperature = NAN;
     self.timeFormatter = [NSDateFormatter new]; self.timeFormatter.dateFormat = @"HH:mm:ss";
-    self.diagnostic = [NSProcessInfo.processInfo.arguments containsObject:@"--probe"] || [NSProcessInfo.processInfo.arguments containsObject:@"--restore"] || [NSProcessInfo.processInfo.arguments containsObject:@"--panel-preview"] || [NSProcessInfo.processInfo.arguments containsObject:@"--self-test"] || [NSProcessInfo.processInfo.arguments containsObject:@"--soak-test"] || [NSProcessInfo.processInfo.arguments containsObject:@"--menu-health"] || [NSProcessInfo.processInfo.arguments containsObject:@"--recovery-test"] || [NSProcessInfo.processInfo.arguments containsObject:@"--render-stall-test"];
+    self.diagnostic = [NSProcessInfo.processInfo.arguments containsObject:@"--probe"] || [NSProcessInfo.processInfo.arguments containsObject:@"--restore"] || [NSProcessInfo.processInfo.arguments containsObject:@"--panel-preview"] || [NSProcessInfo.processInfo.arguments containsObject:@"--self-test"] || [NSProcessInfo.processInfo.arguments containsObject:@"--soak-test"] || [NSProcessInfo.processInfo.arguments containsObject:@"--menu-health"] || [NSProcessInfo.processInfo.arguments containsObject:@"--recovery-test"] || [NSProcessInfo.processInfo.arguments containsObject:@"--render-stall-test"] || [NSProcessInfo.processInfo.arguments containsObject:@"--exit-code-test"] || [NSProcessInfo.processInfo.arguments containsObject:@"--conflict-test"];
+    if ([NSProcessInfo.processInfo.arguments containsObject:@"--exit-code-test"]) { exitStatus=7; [NSApp terminate:nil]; return; }
     NSUserDefaults *prefs = NSUserDefaults.standardUserDefaults;
     self.strength = !self.diagnostic && [prefs objectForKey:@"BoostStrength"] ? fmin(1,fmax(0,[prefs doubleForKey:@"BoostStrength"])) : 1;
     self.targetBacklight = !self.diagnostic && [prefs objectForKey:@"TargetBacklight"] ? fmin(1,fmax(.05,[prefs floatForKey:@"TargetBacklight"])) : 1;
@@ -206,7 +210,7 @@ static NSImage *PrismMenuIcon(BOOL active) {
     [NSUserDefaults.standardUserDefaults registerDefaults:@{@"NSStatusItem Preferred Position XDRLightPrismMenuBar": @220}];
     self.item = [NSStatusBar.systemStatusBar statusItemWithLength:28];
     self.item.autosaveName = @"XDRLightPrismMenuBar";
-    self.item.visible = YES;
+    self.item.visible = !self.diagnostic || [NSProcessInfo.processInfo.arguments containsObject:@"--panel-preview"] || [NSProcessInfo.processInfo.arguments containsObject:@"--menu-health"];
     self.item.button.image = PrismMenuIcon(NO);
     NSMenu *menu = [NSMenu new]; menu.delegate = self; self.item.menu = menu;
     [self updateMenu];
@@ -288,6 +292,34 @@ static NSImage *PrismMenuIcon(BOOL active) {
             }
         }];
         [NSRunLoop.mainRunLoop addTimer:soak forMode:NSRunLoopCommonModes];
+    }
+    if ([NSProcessInfo.processInfo.arguments containsObject:@"--conflict-test"]) {
+        NSScreen *screen=builtIn();
+        CGDirectDisplayID did=[screen.deviceDescription[@"NSScreenNumber"] unsignedIntValue];
+        static CGGammaValue baseR[256],baseG[256],baseB[256];
+        static uint32_t baseCount=0;
+        if (!screen || CGGetDisplayTransferByTable(did,256,baseR,baseG,baseB,&baseCount)!=kCGErrorSuccess || !baseCount) { exitStatus=1; [NSApp terminate:nil]; return; }
+        CGGammaValue elevatedR[256],elevatedG[256],elevatedB[256];
+        for (uint32_t i=0;i<baseCount;i++) { elevatedR[i]=baseR[i]*1.2; elevatedG[i]=baseG[i]*1.2; elevatedB[i]=baseB[i]*1.2; }
+        BOOL injected=CGSetDisplayTransferByTable(did,baseCount,elevatedR,elevatedG,elevatedB)==kCGErrorSuccess;
+        BOOL rejected=injected && ![self enableBoost] && !self.enabled && self.recoveryBlocked;
+        CGSetDisplayTransferByTable(did,baseCount,baseR,baseG,baseB);
+        self.recoveryBlocked=NO; self.wantsBoost=YES;
+        BOOL started=[self enableBoost];
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW,4*NSEC_PER_SEC),dispatch_get_main_queue(),^{
+            BOOL rendered=self.hdr.completedFrames>0;
+            CGGammaValue externalR[256],externalG[256],externalB[256],actualR[256],actualG[256],actualB[256]; uint32_t n=0;
+            for (uint32_t i=0;i<baseCount;i++) { externalR[i]=baseR[i]*.80; externalG[i]=baseG[i]*.85; externalB[i]=baseB[i]*.90; }
+            BOOL changed=CGSetDisplayTransferByTable(did,baseCount,externalR,externalG,externalB)==kCGErrorSuccess;
+            [self tick:nil];
+            BOOL paused=changed && !self.enabled && self.recoveryBlocked;
+            BOOL preserved=CGGetDisplayTransferByTable(did,256,actualR,actualG,actualB,&n)==kCGErrorSuccess && n==baseCount;
+            for (uint32_t i=0;preserved && i<n;i++) preserved=fabsf(actualR[i]-externalR[i])<.003 && fabsf(actualG[i]-externalG[i])<.003 && fabsf(actualB[i]-externalB[i])<.003;
+            // This test owns the injected curve and restores its original snapshot.
+            CGSetDisplayTransferByTable(did,baseCount,baseR,baseG,baseB);
+            printf("ElevatedBaselineRejected=%d ForeignCurvePaused=%d ForeignCurvePreserved=%d\n",rejected,paused,preserved);
+            exitStatus=rejected&&started&&rendered&&paused&&preserved?0:1; [NSApp terminate:nil];
+        });
     }
     if ([NSProcessInfo.processInfo.arguments containsObject:@"--render-stall-test"]) {
         BOOL startedOK=[self enableBoost];
@@ -455,6 +487,7 @@ static const CGFloat XDRMenuWidth = 276;
     NSProcessInfoThermalState thermal = NSProcessInfo.processInfo.thermalState;
     self.thermalItem.title = [NSString stringWithFormat:@"整机热状态：%@", ThermalLabel(thermal)];
     NSScreen *screen = builtIn();
+    if (self.sleeping && self.sleepObservedAt && -self.sleepObservedAt.timeIntervalSinceNow>3 && screen && !CGDisplayIsAsleep([screen.deviceDescription[@"NSScreenNumber"] unsignedIntValue])) { self.sleeping=NO; self.resumeNotBefore=[NSDate dateWithTimeIntervalSinceNow:3]; }
     self.edrItem.title = screen ? [NSString stringWithFormat:@"实时 HDR 余量：%.2f×", screen.maximumExtendedDynamicRangeColorComponentValue] : @"HDR 余量：没有内置屏幕";
     NSString *summary = [NSString stringWithFormat:@"运行状态：%@", ThermalLabel(thermal)];
     if (isfinite(self.batteryTemperature)) summary = [summary stringByAppendingFormat:@" · 电池 %.1f°C", self.batteryTemperature];
@@ -517,6 +550,7 @@ static const CGFloat XDRMenuWidth = 276;
 }
 - (void)stopKeeping:(id)sender { self.wantsBoost=NO; self.recoveryBlocked=NO; [self disableBoost]; [self savePreferences]; [self updateMenu]; [self refreshPanel]; }
 - (void)showPanel:(id)sender {
+    if (self.diagnostic && ![NSProcessInfo.processInfo.arguments containsObject:@"--panel-preview"]) return;
     if (!self.panel) self.panel=[[ControlPanel alloc] initWithOwner:self];
     [self refreshPanel]; [NSApp activateIgnoringOtherApps:YES]; [self.panel showWindow:sender]; [self.panel.window makeKeyAndOrderFront:sender];
 }
@@ -532,6 +566,8 @@ static const CGFloat XDRMenuWidth = 276;
     self.panel.thermalLabel.stringValue=self.thermalItem.title ?: @"";
     self.panel.edrLabel.stringValue=self.edrItem.title ?: @"";
     self.panel.temperatureLabel.stringValue=isfinite(self.batteryTemperature)?[NSString stringWithFormat:@"电池 %.1f°C · 屏幕温度未读取到",self.batteryTemperature]:@"温度传感器暂不可用";
+    if (isfinite(self.screenTemperature)) self.panel.temperatureLabel.stringValue=[NSString stringWithFormat:@"电池 %@ · TL0P %.1f°C*",isfinite(self.batteryTemperature)?[NSString stringWithFormat:@"%.1f°C",self.batteryTemperature]:@"不可用",self.screenTemperature];
+    self.panel.temperatureLabel.toolTip=@"TL0P 的物理位置未确认，不能当作实测屏幕温度。";
 }
 - (BOOL)applicationShouldHandleReopen:(NSApplication *)app hasVisibleWindows:(BOOL)visible { [self showPanel:nil]; return YES; }
 - (void)resumeAfterSystem:(NSNotification *)note {
@@ -548,7 +584,19 @@ static const CGFloat XDRMenuWidth = 276;
     NSScreen *screen = builtIn();
     if (!screen || screen.maximumPotentialExtendedDynamicRangeColorComponentValue <= 1) { self.status = @"没有可用的内置 XDR 屏幕"; return NO; }
     display = [screen.deviceDescription[@"NSScreenNumber"] unsignedIntValue];
+    if (CGDisplayIsAsleep(display)) { self.sleeping=YES; self.sleepObservedAt=NSDate.date; self.status=@"屏幕休眠中，等待唤醒"; return NO; }
+    for (NSRunningApplication *app in NSWorkspace.sharedWorkspace.runningApplications) {
+        NSString *name=app.localizedName.lowercaseString;
+        if ([@[@"vivid",@"brightintosh",@"lunar",@"f.lux",@"flux",@"betterdisplay"] containsObject:name ?: @""]) {
+            self.recoveryBlocked=YES; self.status=[NSString stringWithFormat:@"请先退出 %@，避免亮度或色彩冲突",app.localizedName]; return NO;
+        }
+    }
     if (CGGetDisplayTransferByTable(display, 256, red, green, blue, &count) != kCGErrorSuccess || !count) { self.status = @"无法读取色彩状态"; return NO; }
+    for (uint32_t i=0;i<count;i++) {
+        if (!isfinite(red[i]) || !isfinite(green[i]) || !isfinite(blue[i]) || fmaxf(red[i],fmaxf(green[i],blue[i]))>1.02f) {
+            self.recoveryBlocked=YES; self.status=@"色彩曲线已有增强或异常，请先退出其他色彩工具"; return NO;
+        }
+    }
     savedGamma = YES;
     savedBrightness = getBrightness && setBrightness && getBrightness(display, &originalBrightness) == 0;
     if (savedBrightness && setBrightness(display, self.targetBacklight) != 0) savedBrightness = NO;
@@ -569,7 +617,7 @@ static const CGFloat XDRMenuWidth = 276;
     [self enforceThermalState:NSProcessInfo.processInfo.thermalState];
     if (!self.enabled) return;
     NSScreen *screen = builtIn();
-    if (!screen || [screen.deviceDescription[@"NSScreenNumber"] unsignedIntValue] != display || CGDisplayIsAsleep(display)) { [self disableBoost]; [self updateMenu]; return; }
+    if (!screen || [screen.deviceDescription[@"NSScreenNumber"] unsignedIntValue] != display || CGDisplayIsAsleep(display)) { self.sleeping=screen && CGDisplayIsAsleep(display); if (self.sleeping) self.sleepObservedAt=NSDate.date; [self disableBoost]; self.status=@"屏幕暂不可用，等待恢复"; [self updateMenu]; return; }
     if (self.wantsBoost && getBrightness && setBrightness) {
         float current=0;
         if (getBrightness(display,&current)==0 && fabsf(current-self.targetBacklight)>.01) setBrightness(display,self.targetBacklight);
@@ -586,13 +634,20 @@ static const CGFloat XDRMenuWidth = 276;
     // not a physical luminance measurement. Cap gamma to the calibrated range.
     float gain = 1 + XDRMaxBoost * (1 - (fminf(fmaxf(edr, XDRRefEDR), 16)-XDRRefEDR)/(16-XDRRefEDR)) * self.strength;
     BOOL drifted = NO;
+    BOOL baselineReset = YES;
     if (lastGain > 1) {
         CGGammaValue currentR[256], currentG[256], currentB[256]; uint32_t currentCount = 0;
         if (CGGetDisplayTransferByTable(display, 256, currentR, currentG, currentB, &currentCount) == kCGErrorSuccess && currentCount == count) {
             for (uint32_t i = 0; i < count; i++) {
-                if (fabsf(currentR[i]-red[i]*lastGain) > .003 || fabsf(currentG[i]-green[i]*lastGain) > .003 || fabsf(currentB[i]-blue[i]*lastGain) > .003) { drifted = YES; break; }
+                if (fabsf(currentR[i]-red[i])>.003 || fabsf(currentG[i]-green[i])>.003 || fabsf(currentB[i]-blue[i])>.003) baselineReset=NO;
+                if (fabsf(currentR[i]-red[i]*lastGain) > .003 || fabsf(currentG[i]-green[i]*lastGain) > .003 || fabsf(currentB[i]-blue[i]*lastGain) > .003) { drifted = YES; }
             }
         }
+    }
+    if (drifted && !baselineReset) {
+        // A new profile or foreign curve owns the current state; do not overwrite it.
+        savedGamma=NO; [self disableBoost]; self.recoveryBlocked=YES;
+        self.status=@"检测到其他色彩调整，已暂停；退出相关工具后重新开启"; [self updateMenu]; return;
     }
     if (drifted) {
         gammaConflicts = lastGammaRecovery && -lastGammaRecovery.timeIntervalSinceNow < 15 ? gammaConflicts+1 : 1;
@@ -621,7 +676,7 @@ static const CGFloat XDRMenuWidth = 276;
 }
 - (void)displayChanged:(NSNotification *)note {
     if ([note.name isEqualToString:NSWorkspaceSessionDidResignActiveNotification]) self.sessionInactive=YES;
-    else if (![note.name isEqualToString:NSApplicationDidChangeScreenParametersNotification]) self.sleeping=YES;
+    else if (![note.name isEqualToString:NSApplicationDidChangeScreenParametersNotification]) { self.sleeping=YES; self.sleepObservedAt=NSDate.date; }
     if (!self.enabled) return;
     if ([note.name isEqualToString:NSApplicationDidChangeScreenParametersNotification]) {
         NSScreen *s = builtIn();
@@ -648,7 +703,7 @@ static const CGFloat XDRMenuWidth = 276;
     [NSApp activateIgnoringOtherApps:YES]; [alert runModal];
 }
 - (void)quit:(id)sender { [NSApp terminate:nil]; }
-- (void)applicationWillTerminate:(NSNotification *)note { [self.monitorTimer invalidate]; [self disableBoost]; }
+- (void)applicationWillTerminate:(NSNotification *)note { [self.monitorTimer invalidate]; [self disableBoost]; if (self.diagnostic && exitStatus) exit(exitStatus); }
 @end
 int main(int argc, const char *argv[]) {
     @autoreleasepool {
@@ -667,7 +722,7 @@ int main(int argc, const char *argv[]) {
                 [NSDistributedNotificationCenter.defaultCenter postNotificationName:@"local.xdrlight.ShowPanel" object:nil userInfo:nil deliverImmediately:YES];
                 BOOL testRequested = NO;
                 for (int i=1; i<argc; i++) {
-                    if (strcmp(argv[i], "--self-test")==0 || strcmp(argv[i], "--soak-test")==0 || strcmp(argv[i], "--recovery-test")==0 || strcmp(argv[i], "--menu-health")==0 || strcmp(argv[i], "--render-stall-test")==0) testRequested=YES;
+                    if (strcmp(argv[i], "--self-test")==0 || strcmp(argv[i], "--soak-test")==0 || strcmp(argv[i], "--recovery-test")==0 || strcmp(argv[i], "--menu-health")==0 || strcmp(argv[i], "--render-stall-test")==0 || strcmp(argv[i], "--exit-code-test")==0 || strcmp(argv[i], "--conflict-test")==0) testRequested=YES;
                 }
                 fprintf(stderr,"XDRLight already running; %s\n", testRequested ? "test was NOT run; quit the existing app first" : "reused existing instance");
                 close(lockFD); return testRequested ? 2 : 0;

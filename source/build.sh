@@ -27,5 +27,10 @@ cat > XDRLight.app/Contents/Info.plist <<'PLIST'
 </dict></plist>
 PLIST
 cp assets/AppIcon.icns XDRLight.app/Contents/Resources/AppIcon.icns
+mkdir -p XDRLight.app/Contents/Resources/Licenses
+cp LICENSE XDRLight.app/Contents/Resources/Licenses/XDRLight-GPL-3.0.txt
+cp THIRD_PARTY.md XDRLight.app/Contents/Resources/Licenses/THIRD_PARTY.md
+cp source/vendor/*-LICENSE XDRLight.app/Contents/Resources/Licenses/
+printf 'Source: https://github.com/nbnbb/XDRLight\nMatching source archives are provided beside each binary release.\n' > XDRLight.app/Contents/Resources/Licenses/SOURCE.txt
 python3 source/configure_build.py
 codesign --force --sign - XDRLight.app

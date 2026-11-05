@@ -9,7 +9,12 @@ parser.add_argument('--quick', action='store_true', help='Skip the five-minute s
 args = parser.parse_args()
 root = Path(__file__).resolve().parent.parent
 binary = root / 'XDRLight.app/Contents/MacOS/XDRLight'
+check = subprocess.run([str(binary), "--exit-code-test"], capture_output=True, text=True, timeout=15)
+if check.returncode != 7:
+    raise SystemExit(f"Diagnostic failure exit code broken: {check.returncode}")
+print("DiagnosticFailureExitCode=7", flush=True)
 cases = [
+    ("--conflict-test", 25, ["ElevatedBaselineRejected=1 ForeignCurvePaused=1 ForeignCurvePreserved=1"]),
     ('--self-test', 25, ['Enabled=1', 'GammaApplied=1', 'GammaRestored=1 BrightnessRestored=1', 'SimulatedSeriousThermalShutdown=1']),
     ('--recovery-test', 25, ['SleepSuspended=1 WakeResumed=1 ThermalSuspended=1 ThermalResumed=1 ManualStop=1']),
     ('--render-stall-test', 25, ['RenderedBeforeStall=1 StalledRendererStopped=1 RecoveryBlocked=1']),

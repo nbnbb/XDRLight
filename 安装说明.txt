@@ -32,11 +32,12 @@ M1 Pro / M1 Max（2021）及之后的所有 14、16 英寸 MacBook Pro。系统�
 ----
 · 增强会增加耗电和发热。整机过热时会自动关闭增强，降温后自动恢复。
 · 看 HDR 视频、修图、做色彩校准时建议关闭增强。
-· 不要和 Vivid、BrightIntosh、Lunar 等同类亮度工具同时运行。
+· 不要和 Vivid、BrightIntosh、Lunar、f.lux、BetterDisplay 等亮度或色彩工具同时运行。检测到外部色彩调整时会暂停增强。
+· 保持模式下请用 App 滑块调整背光；如要使用系统亮度键或自动亮度，请先关闭保持。
 · 如果退出后屏幕颜色不正常（例如 App 被强制结束），双击安装包里的「恢复色彩.command」。
   （如果它也被系统拦下，重启电脑同样能完全恢复屏幕颜色。）
 
 开源说明
 --------
-XDRLight 以 GPL-3.0 协议发布，许可证见 LICENSE，完整源代码见 XDRLight-源代码.zip。
+XDRLight 以 GPL-3.0 协议发布，许可证见 LICENSE，完整源代码见同版本 XDRLight-<版本>-source.zip 或 .tar.gz。
 亮度增强技术参考 BrightIntosh（GPL-3.0）。在线更新组件 Sparkle 使用其自有许可证。

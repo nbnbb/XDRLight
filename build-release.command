@@ -13,7 +13,7 @@ codesign --verify --deep --strict XDRLight.app
 # Keep all build dependencies; omit local logs, backups and generated app bundles.
 rsync -a --exclude '*backup*' --exclude '.DS_Store' source/ "$STAGE/XDRLight-source/source/"
 rsync -a --exclude '.DS_Store' --exclude 'prism-4x.png' assets/ "$STAGE/XDRLight-source/assets/"
-for doc in LICENSE README.md THIRD_PARTY.md VALIDATION.md .gitignore 使用说明.md 安装说明.txt; do
+for doc in LICENSE README.md THIRD_PARTY.md CLAUDE_REVIEW.md VALIDATION.md .gitignore 使用说明.md 安装说明.txt; do
   if [[ -f "$doc" ]]; then cp "$doc" "$STAGE/XDRLight-source/"; fi
 done
 cp build-release.command 恢复色彩.command "$STAGE/XDRLight-source/"
